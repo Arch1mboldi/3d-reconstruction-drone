@@ -1,0 +1,6 @@
+{
+  "dataset": "EuRoC MAV V1_01_easy",
+  "canonical_record": "https://www.research-collection.ethz.ch/entities/researchdata/bcaf173e-5dac-484b-bc37-faf97a594f1f",
+  "download_mirror": "https://huggingface.co/datasets/pepijn223/euroc-mirror",
+  "reason": "The official ETH collection was rate-limited during deployment; this mirror provides the original ASL-format sequence."
+}
