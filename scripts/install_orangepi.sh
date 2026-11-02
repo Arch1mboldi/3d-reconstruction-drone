@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_DIR="${1:-$HOME/3d-reconstruction-drone}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_PROJECT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+PROJECT_DIR="${1:-$DEFAULT_PROJECT_DIR}"
 
 sudo apt-get update
 sudo apt-get install -y python3-venv python3-pip python3-opencv python3-numpy unzip curl

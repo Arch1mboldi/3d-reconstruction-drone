@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_DIR="${PROJECT_DIR:-$HOME/3d-reconstruction-drone}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="${PROJECT_DIR:-$(cd -- "$SCRIPT_DIR/.." && pwd)}"
 DATA_ROOT="$PROJECT_DIR/data/EuRoC"
 ARCHIVE="$DATA_ROOT/V1_01_easy.zip"
 DEST="$DATA_ROOT/V1_01_easy"
