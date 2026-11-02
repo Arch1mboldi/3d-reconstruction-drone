@@ -4,18 +4,19 @@ import asyncio
 import json
 import os
 from contextlib import asynccontextmanager
+from contextlib import suppress
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
 
 from .runtime import ReplayRuntime
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATASET_PATH = Path(os.getenv("EUROC_MAV0", PROJECT_ROOT / "data/EuRoC/V1_01_easy/mav0"))
-FRONTEND_DIST = Path(os.getenv("FRONTEND_DIST", PROJECT_ROOT / "frontend/dist"))
+VIDEO_FPS = max(1, min(20, int(os.getenv("VIDEO_FPS", "10"))))
 runtime: ReplayRuntime | None = None
 
 
@@ -29,12 +30,23 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="3D Reconstruction Drone Debug Backend", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
 
 
 def get_runtime() -> ReplayRuntime:
     if runtime is None:
         raise HTTPException(status_code=503, detail="Replay runtime is not ready")
     return runtime
+
+
+@app.get("/")
+async def root():
+    return {"service": "3d-reconstruction-drone-backend", "frontend": "runs on the laptop", "ok": True}
 
 
 @app.get("/api/health")
@@ -63,7 +75,7 @@ async def mjpeg(camera: str):
         jpeg = rt.latest_jpeg[camera]
         if jpeg:
             yield boundary + jpeg + b"\r\n"
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(1.0 / VIDEO_FPS)
 
 
 @app.get("/stream/{camera}.mjpg")
@@ -77,10 +89,15 @@ async def stream(camera: str):
 async def websocket_endpoint(socket: WebSocket):
     await socket.accept()
     rt = get_runtime()
+    send_lock = asyncio.Lock()
+
+    async def send(payload: dict):
+        async with send_lock:
+            await socket.send_text(json.dumps(payload, separators=(",", ":")))
 
     async def send_states():
         while True:
-            await socket.send_text(json.dumps(rt.snapshot(), separators=(",", ":")))
+            await send(rt.snapshot())
             await asyncio.sleep(0.2)
 
     sender = asyncio.create_task(send_states())
@@ -89,11 +106,11 @@ async def websocket_endpoint(socket: WebSocket):
             message = await socket.receive_json()
             if message.get("type") == "control":
                 rt.command(str(message.get("action")), message.get("value"))
+            elif message.get("type") == "ping":
+                await send({"type": "pong", "client_time_ms": message.get("client_time_ms")})
     except WebSocketDisconnect:
         pass
     finally:
         sender.cancel()
-
-
-if FRONTEND_DIST.exists():
-    app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
+        with suppress(asyncio.CancelledError):
+            await sender

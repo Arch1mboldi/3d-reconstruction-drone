@@ -37,6 +37,7 @@ class ReplayRuntime:
         self.started_at = time.time()
         self._last_frame_time = time.perf_counter()
         self._fps_ema = 0.0
+        self.video_fps = int(os.getenv("VIDEO_FPS", "10"))
         self.log("Dataset ready; press Play to start real-time replay")
 
     def log(self, message: str) -> None:
@@ -61,6 +62,25 @@ class ReplayRuntime:
             step = max(1, len(data) // limit)
             data = data[::step][:limit]
         return [[round(float(v), 4) for v in p] for p in data]
+
+    def _aligned_ground_truth(self):
+        estimate = np.asarray(self.trajectory, dtype=np.float64)
+        truth = np.asarray(self.ground_truth, dtype=np.float64)
+        if len(estimate) < 3 or len(estimate) != len(truth):
+            return truth, None, None
+
+        source_mean = truth.mean(axis=0)
+        target_mean = estimate.mean(axis=0)
+        source_centered = truth - source_mean
+        target_centered = estimate - target_mean
+        u, _, vt = np.linalg.svd(source_centered.T @ target_centered)
+        rotation = vt.T @ u.T
+        if np.linalg.det(rotation) < 0:
+            vt[-1, :] *= -1
+            rotation = vt.T @ u.T
+        aligned = (rotation @ source_centered.T).T + target_mean
+        errors = np.linalg.norm(aligned - estimate, axis=1)
+        return aligned, float(errors[-1]), float(np.sqrt(np.mean(errors**2)))
 
     def command(self, action: str, value=None) -> None:
         with self.lock:
@@ -87,6 +107,8 @@ class ReplayRuntime:
     def snapshot(self) -> dict:
         with self.lock:
             state = dict(self.last_state)
+            aligned_truth, position_error, ate_rmse = self._aligned_ground_truth()
+            video_bytes = sum(len(value) for value in self.latest_jpeg.values())
             state.update(
                 {
                     "type": "state",
@@ -96,8 +118,15 @@ class ReplayRuntime:
                     "frame": self.index,
                     "frame_count": len(self.dataset.frames),
                     "trajectory": self._point_list(self.trajectory, 800),
-                    "ground_truth": self._point_list(self.ground_truth, 800),
+                    "ground_truth": self._point_list(aligned_truth, 800),
                     "map_points": self._point_list(self.map_points, 1000),
+                    "position_error_m": None if position_error is None else round(position_error, 4),
+                    "ate_rmse_m": None if ate_rmse is None else round(ate_rmse, 4),
+                    "transport": {
+                        "video_fps": self.video_fps,
+                        "video_estimated_kbps": round(video_bytes * self.video_fps * 8 / 1000.0, 1),
+                        "telemetry_hz": 5,
+                    },
                     "logs": list(self.logs)[-15:],
                     "device": {
                         "cpu_percent": psutil.cpu_percent(),

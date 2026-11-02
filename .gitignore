@@ -12,7 +12,6 @@ __pycache__/
 
 # Frontend
 frontend/node_modules/
-frontend/dist/
 
 # Datasets and generated sessions
 data/
@@ -20,9 +19,11 @@ sessions/
 *.bag
 *.zip
 .deploy.tgz
+.backend-deploy.tgz
 
 # IDE / OS
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+*.baiduyun.uploading.cfg

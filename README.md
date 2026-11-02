@@ -15,12 +15,17 @@ Orange Pi Zero 3W 双目视觉定位与三维重建调试平台，面向 UCI EEC
 5. 以 WebSocket 发送位姿、轨迹、稀疏点、跟踪状态及设备遥测；
 6. 接收浏览器的播放、暂停、重置和倍速控制。
 
-笔记本浏览器负责：
+笔记本本地前端负责：
 
 - 左右校正画面；
 - Three.js三维轨迹、当前相机和稀疏点；
 - 绿色图像估计轨迹与橙色数据集真值的独立显示；
-- FPS、处理时间、特征数、PnP内点、CPU、内存、温度和事件日志。
+- FPS、处理时间、特征数、PnP内点、CPU、内存、温度和事件日志；
+- Wi-Fi往返时间、遥测吞吐、消息频率、视频码率估计和断线次数；
+- 从本机 `127.0.0.1:5173` 启动，前端代码不由开发板托管。
+
+SSH仅用于安装、维护和查看日志。运行时图像、控制和SLAM数据均通过Orange Pi自带
+Wi-Fi 6模块与天线传输，SSH不在数据路径中。
 
 ## 2. 必须明确的算法边界
 
@@ -49,6 +54,7 @@ EuRoC真值复制。EuRoC真值仅作为单独的橙色参考轨迹显示。
 | OpenCV | Ubuntu ARM64包，4.5.4 |
 | NumPy | Ubuntu ARM64包，1.21.5 |
 | Web后端 | FastAPI 0.115.6 + Uvicorn 0.34.0 |
+| WebSocket | websockets 14.1 |
 | 系统遥测 | psutil 6.1.1 |
 | 测试框架 | pytest 8.3.4 |
 | 网络 | `wlan0`，当前局域网地址 `192.168.1.105` |
@@ -77,8 +83,9 @@ IMX219尚未安装；`vin_v4l2`内核模块和 `/opt/v4l2_opencv_demo` 官方示
 | Three.js | 0.173.0 |
 | Vite | 6.4.5 |
 
-前端依赖已经过 `npm audit`，构建时为0个已知漏洞。生产文件由Vite生成并部署到
-开发板的 `frontend/dist/`，由FastAPI同源提供，因此使用时不需要在开发板安装Node.js。
+前端依赖已经过 `npm audit`，构建时为0个已知漏洞。生产文件由Vite生成到笔记本上的
+`frontend/dist/`，再由Node内置HTTP服务器只绑定 `127.0.0.1:5173`。Orange Pi不托管
+前端，也不需要安装Node.js。CSS只使用系统字体，安装完成后不依赖互联网字体或CDN。
 
 ## 5. 数据集
 
@@ -174,6 +181,13 @@ T_world_current = T_world_previous × inverse(T_current_previous)
 
 由于当前没有回环和全局优化，长轨迹必然累积漂移。这正是后续接入完整SLAM的理由。
 
+### 6.6 在线误差
+
+EuRoC真值与视觉里程计使用不同坐标系。前端显示前，后端用不带尺度因子的刚体变换
+（SVD/Umeyama的SE(3)部分）将真值轨迹对齐到估计轨迹，再计算当前位置误差和ATE RMSE。
+双目尺度是可观测的，因此这里不允许用缩放因子掩盖尺度漂移。指标用于实时调试，正式
+报告仍应使用完整轨迹和标准离线评估工具。
+
 ## 7. 系统架构与通信
 
 ```text
@@ -186,10 +200,13 @@ EuRoC replay（现在）/ 双IMX219（以后）
   Stereo VO引擎         JPEG编码
   位姿/轨迹/稀疏点       左右MJPEG
        │                    │
-       └──── WebSocket ─────┤  Orange Pi :8000
-                            │  Wi-Fi
-                            ▼
-                  React + Three.js浏览器界面
+  WebSocket :8000/ws      HTTP MJPEG :8000/stream/*
+       │                    │
+       └────────┬───────────┘  Orange Pi后端
+                │ Wi-Fi 6局域网（非SSH）
+                ▼
+     笔记本本地前端 http://127.0.0.1:5173
+              React + Three.js
 ```
 
 | 接口 | 内容 |
@@ -201,8 +218,9 @@ EuRoC replay（现在）/ 双IMX219（以后）
 | `GET /stream/right.mjpg` | 右路校正预览 |
 | `WS /ws` | 5 Hz位姿、轨迹、地图点、设备遥测和控制 |
 
-第一版用MJPEG是为了可检查性和浏览器兼容性。真实飞行版本应评估H.264/H.265硬编码或
-WebRTC，并让视频在带宽不足时优先降级，不能阻塞位姿和状态遥测。
+WebSocket与视频是两条独立连接：视频拥塞不会堵塞位姿和控制。第一版固定发送两路
+752×480、JPEG质量72、最高10 FPS的MJPEG，暂不加入动态码率、延迟、抖动或丢包模拟。
+真实飞行版本应评估H.264/H.265硬编码或WebRTC。
 
 ## 8. 安装与部署
 
@@ -218,10 +236,25 @@ npm run build
 当前工作区位于同步盘，Windows上的Vite若遇到 `realpath EPERM`，可把前端源码复制到普通
 临时目录构建，再把 `dist/` 复制回来。该问题与源码无关。
 
+构建完成后，在项目根目录双击 `start-dashboard.cmd`，或运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start-dashboard.ps1
+```
+
+它只在笔记本监听 `127.0.0.1:5173`，并自动打开：
+
+```text
+http://127.0.0.1:5173/?backend=http://192.168.1.105:8000
+```
+
+前端右侧可在固定IP和 `orangepizero3w.local` 之间切换。停止笔记本前端只需在启动窗口
+按 `Ctrl+C`；这不会关闭Orange Pi后端。
+
 ### 8.2 部署到Orange Pi
 
 ```bash
-scp -r backend frontend/dist scripts docs README.md LICENSE \
+scp -r backend scripts deploy docs README.md LICENSE \
   orangepi@192.168.1.105:~/3d-reconstruction-drone/
 
 ssh orangepi@192.168.1.105
@@ -234,7 +267,7 @@ chmod +x scripts/*.sh scripts/*.py
 
 ```bash
 sudo apt-get install -y \
-  python3-venv python3-pip python3-opencv python3-numpy unzip curl
+  python3-venv python3-pip python3-opencv python3-numpy unzip curl avahi-daemon
 ```
 
 Python虚拟环境使用 `--system-site-packages`，以复用Ubuntu为ARM64编译的OpenCV/NumPy，
@@ -252,30 +285,49 @@ unzip ~/3d-reconstruction-drone/data/EuRoC/V1_01_easy.zip \
   -d ~/3d-reconstruction-drone/data/EuRoC/V1_01_easy
 ```
 
-### 8.4 启动后端
+### 8.4 固定Wi-Fi地址
 
 ```bash
-cd ~/3d-reconstruction-drone
-EUROC_MAV0="$HOME/3d-reconstruction-drone/data/EuRoC/V1_01_easy/mav0" \
-  ./scripts/run_backend.sh
+cd /home/orangepi/3d-reconstruction-drone
+./scripts/configure_static_wifi.sh
 ```
 
-浏览器访问：
+当前实机配置为：
 
 ```text
-http://192.168.1.105:8000
+地址 192.168.1.105/24
+网关 192.168.1.1
+DNS  192.168.1.1
 ```
 
-当前开发阶段不创建开机服务。稳定运行和错误恢复通过后，再增加systemd服务，避免开发板
-一开机就进入高负载状态。
+为避免与路由器DHCP池冲突，长期使用时还应在路由器中为Orange Pi无线网卡MAC地址创建
+DHCP保留。脚本切换连接时SSH可能短暂断开。
+
+### 8.5 启动和关闭Orange Pi后端
+
+安装脚本会注册systemd服务。常用命令：
+
+```bash
+sudo systemctl start 3d-reconstruction-drone
+sudo systemctl stop 3d-reconstruction-drone
+sudo systemctl restart 3d-reconstruction-drone
+systemctl status 3d-reconstruction-drone
+journalctl -u 3d-reconstruction-drone -f
+```
+
+服务随开发板开机启动，但数据集初始保持暂停，直到笔记本前端发送Play。停止SSH连接不会
+影响服务。Orange Pi的 `http://192.168.1.105:8000/` 只返回后端身份JSON，不再返回网页。
 
 ## 9. 验证命令
 
 ```bash
 # Python语法和依赖
 .venv/bin/python -m compileall -q backend scripts
-.venv/bin/python -c 'import cv2,fastapi,uvicorn,numpy,yaml,psutil'
+.venv/bin/python -c 'import cv2,fastapi,uvicorn,numpy,yaml,psutil,websockets'
 .venv/bin/python -m pytest -q
+
+# WebSocket握手、ping、控制和实时VO
+.venv/bin/python scripts/check_backend.py --play
 
 # 服务健康
 curl http://127.0.0.1:8000/api/health
@@ -288,6 +340,9 @@ curl -X POST http://127.0.0.1:8000/api/control/play
 
 # 检查MJPEG是否返回JPEG字节流
 curl --max-time 3 http://127.0.0.1:8000/stream/left.mjpg -o /tmp/left.mjpg
+
+# systemd与mDNS
+systemctl is-active 3d-reconstruction-drone avahi-daemon
 
 # 系统状态
 grep -H . /sys/class/thermal/thermal_zone*/temp
@@ -343,6 +398,8 @@ Pangolin及ARM编译仍需要单独验证。
 - GitHub仓库默认为私有；
 - 调试界面不是飞控，也不能作为唯一避障或自主飞行数据源；
 - 当前服务只应暴露在受信任局域网，未实现用户认证和TLS。
+- `127.0.0.1:5173` 是笔记本前端；`192.168.1.105:8000` 是Orange Pi后端；
+- SSH仅用于管理，不传输运行时图像、轨迹或点云。
 
 ## 13. 目录结构
 
@@ -352,17 +409,25 @@ backend/
     euroc.py       数据读取、标定、校正、真值查找
     stereo_vo.py   ORB + 双目深度 + PnP-RANSAC
     runtime.py     20 FPS重放、状态、遥测、图像编码
-    main.py        FastAPI、WebSocket、MJPEG和静态网页
+    main.py        纯后端FastAPI、WebSocket和MJPEG
 frontend/
+  dist/            笔记本生产前端
+  serve.mjs        仅绑定127.0.0.1的本地静态服务器
   src/
     main.jsx       React界面和Three.js场景
     styles.css     调试控制台样式
 scripts/
   install_orangepi.sh
+  configure_static_wifi.sh
   download_euroc.sh
+  check_backend.py
   run_backend.sh
+deploy/
+  3d-reconstruction-drone.service
 docs/
   architecture.md
+start-dashboard.ps1
+start-dashboard.cmd
 ```
 
 ## 14. 许可证

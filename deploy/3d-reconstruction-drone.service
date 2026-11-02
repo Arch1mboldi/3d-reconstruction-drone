@@ -1,0 +1,22 @@
+[Unit]
+Description=Orange Pi stereo visual odometry Wi-Fi backend
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=orangepi
+Group=orangepi
+WorkingDirectory=/home/orangepi/3d-reconstruction-drone
+Environment=PYTHONUNBUFFERED=1
+Environment=VO_FEATURES=900
+Environment=VIDEO_FPS=10
+Environment=EUROC_MAV0=/home/orangepi/3d-reconstruction-drone/data/EuRoC/V1_01_easy/mav0
+ExecStart=/home/orangepi/3d-reconstruction-drone/scripts/run_backend.sh
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
