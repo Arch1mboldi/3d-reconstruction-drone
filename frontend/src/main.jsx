@@ -6,6 +6,7 @@ import "./styles.css";
 
 const DEFAULT_BACKEND = "http://192.168.1.105:8000";
 const MDNS_BACKEND = "http://orangepizero3w.local:8000";
+const DASHBOARD_BUILD = "wifi-split-2026.11.02";
 const emptyState = {
   playing: false,
   frame: 0,
@@ -31,6 +32,7 @@ const initialBackend = () => {
 function useBackend(endpoint) {
   const [state, setState] = useState(emptyState);
   const [connected, setConnected] = useState(false);
+  const [connectionRevision, setConnectionRevision] = useState(0);
   const [network, setNetwork] = useState({ rtt_ms: null, telemetry_kbps: 0, message_hz: 0, disconnects: 0 });
   const socketRef = useRef(null);
 
@@ -52,6 +54,7 @@ function useBackend(endpoint) {
       socketRef.current = socket;
       socket.onopen = () => {
         setConnected(true);
+        setConnectionRevision((revision) => revision + 1);
         pingTimer = setInterval(() => {
           if (socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({ type: "ping", client_time_ms: performance.now() }));
@@ -109,7 +112,7 @@ function useBackend(endpoint) {
       socketRef.current.send(JSON.stringify({ type: "control", action, value }));
     }
   };
-  return { state, connected, network, command };
+  return { state, connected, connectionRevision, network, command };
 }
 
 function setLine(line, points, color) {
@@ -206,12 +209,32 @@ function Metric({ label, value, accent }) {
   return <div className="metric"><span>{label}</span><strong className={accent || ""}>{value}</strong></div>;
 }
 
-function CameraCard({ side, label, endpoint }) {
+function CameraCard({ side, label, endpoint, connectionRevision }) {
+  const [attempt, setAttempt] = useState(0);
+  const [videoReady, setVideoReady] = useState(false);
+
+  useEffect(() => {
+    setVideoReady(false);
+    setAttempt((value) => value + 1);
+  }, [endpoint, connectionRevision]);
+
+  const retry = () => {
+    setVideoReady(false);
+    window.setTimeout(() => setAttempt((value) => value + 1), 1200);
+  };
+
   return (
     <section className="camera-card panel">
       <div className="panel-title"><span>{label}</span><small>WIFI MJPEG · 752×480 · 10 FPS</small></div>
       <div className="camera-frame">
-        <img key={`${endpoint}-${side}`} src={`${endpoint}/stream/${side}.mjpg`} alt={`${label} camera stream`} />
+        <img
+          key={`${endpoint}-${side}-${attempt}`}
+          src={`${endpoint}/stream/${side}.mjpg?session=${connectionRevision}-${attempt}`}
+          alt={`${label} camera stream`}
+          onLoad={() => setVideoReady(true)}
+          onError={retry}
+        />
+        {!videoReady && <div className="stream-status">VIDEO RECONNECTING</div>}
         <div className="reticle" />
       </div>
     </section>
@@ -221,7 +244,7 @@ function CameraCard({ side, label, endpoint }) {
 function App() {
   const [endpoint, setEndpoint] = useState(initialBackend);
   const [endpointDraft, setEndpointDraft] = useState(endpoint);
-  const { state, connected, network, command } = useBackend(endpoint);
+  const { state, connected, connectionRevision, network, command } = useBackend(endpoint);
   const progress = state.frame_count ? (100 * state.frame) / state.frame_count : 0;
   const trackingClass = state.tracking === "tracking" ? "good" : state.tracking === "lost" ? "bad" : "warn";
   const applyEndpoint = (value = endpointDraft) => {
@@ -234,7 +257,7 @@ function App() {
   return (
     <main>
       <header>
-        <div><div className="eyebrow">EECS 159A · LAPTOP DEBUG CONSOLE</div><h1>3D Reconstruction Drone</h1></div>
+        <div><div className="eyebrow">EECS 159A · LAPTOP DEBUG CONSOLE · {DASHBOARD_BUILD}</div><h1>3D Reconstruction Drone</h1></div>
         <div className={`connection ${connected ? "online" : "offline"}`}><i />{connected ? "ORANGE PI CONNECTED" : "RECONNECTING"}</div>
       </header>
 
@@ -250,8 +273,8 @@ function App() {
       <section className="workspace">
         <div className="left-column">
           <div className="camera-grid">
-            <CameraCard side="left" label="CAMERA 0 · LEFT" endpoint={endpoint} />
-            <CameraCard side="right" label="CAMERA 1 · RIGHT" endpoint={endpoint} />
+            <CameraCard side="left" label="CAMERA 0 · LEFT" endpoint={endpoint} connectionRevision={connectionRevision} />
+            <CameraCard side="right" label="CAMERA 1 · RIGHT" endpoint={endpoint} connectionRevision={connectionRevision} />
           </div>
           <section className="panel viewport-panel">
             <div className="panel-title"><span>WORLD VIEW</span><div className="legend"><b className="estimate" />Estimated <b className="truth" />Aligned ground truth <b className="points" />Map points</div></div>
