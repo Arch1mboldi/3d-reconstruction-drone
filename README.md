@@ -254,6 +254,8 @@ http://127.0.0.1:5173/?backend=http://192.168.1.105:8000
 新版顶部应显示 `LAPTOP DEBUG CONSOLE · wifi-split-2026.11.02`。若仍显示旧的
 `LIVE DEBUG CONSOLE`，说明浏览器保留了旧页面：关闭旧标签页、停止旧前端进程，再重新
 运行 `start-dashboard.cmd`。视频元素会在WebSocket重连和图像错误后自动建立新MJPEG连接。
+启动器会自动替换占用5173端口的本项目旧Node/Vite进程；如果端口属于其他程序，则停止并
+显示占用进程，不会自动结束无关程序。
 
 ### 8.2 部署到Orange Pi
 
