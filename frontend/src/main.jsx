@@ -135,8 +135,9 @@ function Scene3D({ state }) {
     scene.fog = new THREE.FogExp2(0x071017, 0.016);
     const camera = new THREE.PerspectiveCamera(55, 1, 0.01, 500);
     camera.position.set(7, 6, 8);
+    camera.lookAt(0, 0, 0);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     element.appendChild(renderer.domElement);
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -160,9 +161,10 @@ function Scene3D({ state }) {
     sceneApi.current = { estimated, truth, cloud, body };
 
     const resize = () => {
-      const { clientWidth, clientHeight } = element;
-      renderer.setSize(clientWidth, clientHeight, false);
-      camera.aspect = clientWidth / Math.max(clientHeight, 1);
+      const clientWidth = Math.max(element.clientWidth, 1);
+      const clientHeight = Math.max(element.clientHeight, 1);
+      renderer.setSize(clientWidth, clientHeight, true);
+      camera.aspect = clientWidth / clientHeight;
       camera.updateProjectionMatrix();
     };
     const observer = new ResizeObserver(resize);

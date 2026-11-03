@@ -29,6 +29,7 @@ h1 { margin: 2px 0 0; color: #f2f7f9; font-size: 25px; letter-spacing: -.02em; }
 .reticle::after { height: 28px; width: 1px; left: 50%; top: calc(50% - 14px); }
 .viewport-panel { min-height: 430px; overflow: hidden; }
 .scene { height: calc(100% - 38px); min-height: 390px; }
+.scene canvas { display: block; width: 100% !important; height: 100% !important; }
 .legend { display: flex; align-items: center; gap: 7px; font-size: 9px; color: #627b88; }
 .legend b { width: 14px; height: 2px; display: inline-block; margin-left: 7px; }.legend .estimate { background:#31e6a1 }.legend .truth { background:#ffb24a }.legend .points { background:#5cb9ff }
 aside { display: flex; flex-direction: column; gap: 12px; }
