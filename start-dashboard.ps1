@@ -16,7 +16,11 @@ if (-not (Test-Path -LiteralPath $IndexFile)) {
 $Listener = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($Listener) {
     $Owner = Get-CimInstance Win32_Process -Filter "ProcessId=$($Listener.OwningProcess)"
-    if ($Owner.Name -eq "node.exe" -and $Owner.CommandLine -like "*$ProjectRoot*") {
+    $IsProjectDashboard = $Owner.Name -eq "node.exe" -and (
+        $Owner.CommandLine -like "*$ProjectRoot*" -or
+        $Owner.CommandLine -match "frontend[\\/]serve\.mjs"
+    )
+    if ($IsProjectDashboard) {
         Write-Host "Stopping an older dashboard process on port $Port (PID $($Owner.ProcessId))."
         Stop-Process -Id $Owner.ProcessId -Force
         Start-Sleep -Milliseconds 500
