@@ -12,6 +12,7 @@ __pycache__/
 
 # Frontend
 frontend/node_modules/
+native/build/
 
 # Datasets and generated sessions
 data/

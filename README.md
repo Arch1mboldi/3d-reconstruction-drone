@@ -1,6 +1,8 @@
 # 3D Reconstruction Drone
 
 Orange Pi Zero 3W 双目视觉定位与三维重建调试平台，面向 UCI EECS 159A 项目。
+
+> **架构更新（2026-11-04）：** 下文记录的是现有 Python/React 原型，尚未按新架构改造。经审查后的目标方案见 [docs/architecture.md](docs/architecture.md)：Orange Pi 只采集和传输，笔记本运行 C++ 双目 SLAM、记录和本地界面。不要将目标方案误认为已部署功能。
 在 IMX219 到货前，开发板按真实时间重放 EuRoC 双目数据；相机到货后只替换输入源，
 继续使用相同的位姿引擎、Wi-Fi协议和浏览器调试界面。
 
@@ -126,7 +128,8 @@ data/EuRoC/V1_01_easy/
 ### 5.2 模拟真实相机的方式
 
 重放器按EuRoC时间顺序读取同步左右帧，目标周期为 `0.05 s / speed`，即1×时模拟
-20 FPS。每个数据包同时保留：
+20 FPS。服务启动后自动处理；回放控制只保留为后端测试/维护接口，不出现在面向真实
+相机的笔记本前端。每个数据包同时保留：
 
 - 原始数据集纳秒时间戳；
 - 当前重放帧号；
@@ -183,10 +186,11 @@ T_world_current = T_world_previous × inverse(T_current_previous)
 
 ### 6.6 在线误差
 
-EuRoC真值与视觉里程计使用不同坐标系。前端显示前，后端用不带尺度因子的刚体变换
-（SVD/Umeyama的SE(3)部分）将真值轨迹对齐到估计轨迹，再计算当前位置误差和ATE RMSE。
-双目尺度是可观测的，因此这里不允许用缩放因子掩盖尺度漂移。指标用于实时调试，正式
-报告仍应使用完整轨迹和标准离线评估工具。
+EuRoC真值与视觉里程计使用不同坐标系。后端读取完整机体真值位姿，通过 `cam0` 外参
+转换为左相机位姿，再固定到首帧校正后左相机坐标系。这个变换不会随新帧重新拟合，
+因此历史真值轨迹不会整体漂移。随后直接计算当前位置误差和ATE RMSE；双目尺度是
+可观测的，因此不使用缩放因子掩盖尺度漂移。指标用于实时调试，正式报告仍应使用完整
+轨迹和标准离线评估工具。数据集循环时会同时清空轨迹和点云，避免跨轮连接。
 
 ## 7. 系统架构与通信
 
@@ -213,7 +217,7 @@ EuRoC replay（现在）/ 双IMX219（以后）
 |---|---|
 | `GET /api/health` | 数据集路径、帧数和服务状态 |
 | `GET /api/state` | 单次完整遥测快照 |
-| `POST /api/control/{action}` | `play`、`pause`、`reset`、`speed`、`loop` |
+| `POST /api/control/{action}` | 模拟源测试/维护：`play`、`pause`、`reset`、`speed`、`loop` |
 | `GET /stream/left.mjpg` | 左路校正预览 |
 | `GET /stream/right.mjpg` | 右路校正预览 |
 | `WS /ws` | 5 Hz位姿、轨迹、地图点、设备遥测和控制 |
@@ -325,7 +329,7 @@ systemctl status 3d-reconstruction-drone
 journalctl -u 3d-reconstruction-drone -f
 ```
 
-服务随开发板开机启动，但数据集初始保持暂停，直到笔记本前端发送Play。停止SSH连接不会
+服务随开发板开机启动并自动处理当前输入源；笔记本前端不提供回放控制。停止SSH连接不会
 影响服务。Orange Pi的 `http://192.168.1.105:8000/` 只返回后端身份JSON，不再返回网页。
 
 ## 9. 验证命令
