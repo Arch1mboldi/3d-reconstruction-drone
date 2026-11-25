@@ -3,7 +3,7 @@ project(drone_stereo_transport LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-find_package(OpenCV REQUIRED COMPONENTS core imgcodecs imgproc videoio)
+find_package(OpenCV REQUIRED COMPONENTS core imgcodecs imgproc video videoio calib3d)
 
 add_executable(drone_sender sender.cpp)
 target_include_directories(drone_sender PRIVATE ${OpenCV_INCLUDE_DIRS})
@@ -22,3 +22,9 @@ if(stella_vslam_FOUND)
 else()
     message(STATUS "Laptop stereo SLAM: unavailable (transport-only receiver)")
 endif()
+
+foreach(tool prepare_feed dashboard_vo)
+    add_executable(${tool} ${tool}.cpp)
+    target_include_directories(${tool} PRIVATE ${OpenCV_INCLUDE_DIRS})
+    target_link_libraries(${tool} PRIVATE ${OpenCV_LIBS})
+endforeach()

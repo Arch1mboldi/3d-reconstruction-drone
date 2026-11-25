@@ -2,10 +2,11 @@
 
 Orange Pi Zero 3W 双目视觉定位与三维重建调试平台，面向 UCI EECS 159A 项目。
 
-> **架构更新（2026-11-04）：** 下文记录的是现有 Python/React 原型，尚未按新架构改造。经审查后的目标方案见 [docs/architecture.md](docs/architecture.md)：Orange Pi 只采集和传输，笔记本运行 C++ 双目 SLAM、记录和本地界面。不要将目标方案误认为已部署功能。
-在 IMX219 到货前，开发板按真实时间重放 EuRoC 双目数据；相机到货后只替换输入源，
-继续使用相同的位姿引擎、Wi-Fi协议和浏览器调试界面。
+**当前启动方式（2026-11-25）**：双击 `start-dashboard.cmd`，访问 http://127.0.0.1:5173/ 。Orange Pi 通过 Wi-Fi 提供校正图像，笔记本运行 C++ 双目 VO，以 EuRoC 原生 20 Hz 回放。启动、关闭、部署、真值坐标、点云和日志见 [当前运行说明](docs/live-dashboard.md)。
 
+---
+
+以下章节保留旧版板端 VO 原型的配置和历史测试结果。
 ## 1. 当前完成范围
 
 开发板负责：

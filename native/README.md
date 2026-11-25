@@ -1,5 +1,7 @@
 # Native transport milestone
 
+The default EuRoC dashboard uses the [20 Hz laptop pipeline](../docs/live-dashboard.md). The following notes describe the independent RTP milestone and its original deployment.
+
 This directory is the first **working transport slice** of the new architecture.
 It is not yet the complete SLAM application. The existing Python/React prototype
 is still deployed on the board. The programs here do not run Python or Node.
@@ -33,7 +35,7 @@ native/build/drone_receiver sessions/wifi-smoke 5600 200
 Then start the sender on the Orange Pi, replacing the laptop IP:
 
 ```bash
-native/build/drone_sender data/EuRoC/V1_01_easy/mav0 192.168.1.134 5600 10 200
+native/build/drone_sender data/EuRoC/V1_01_easy/mav0 192.168.1.134 5600 20 200
 ```
 
 For a ten-second local transport test with synthetic images:

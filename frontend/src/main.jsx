@@ -1,16 +1,13 @@
+import { LiveDashboard } from "./LiveDashboard.jsx";
+import { Scene3D } from "./Scene3D.jsx";
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import * as THREE from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import "./styles.css";
 
 const DEFAULT_BACKEND = "http://192.168.1.105:8000";
 const MDNS_BACKEND = "http://orangepizero3w.local:8000";
-const DASHBOARD_BUILD = "wifi-split-2026.11.02";
+const DASHBOARD_BUILD = "camera-ui-2026.11.04";
 const emptyState = {
-  playing: false,
-  frame: 0,
-  frame_count: 0,
   trajectory: [],
   ground_truth: [],
   map_points: [],
@@ -107,101 +104,7 @@ function useBackend(endpoint) {
     };
   }, [endpoint]);
 
-  const command = (action, value) => {
-    if (socketRef.current?.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify({ type: "control", action, value }));
-    }
-  };
-  return { state, connected, connectionRevision, network, command };
-}
-
-function setLine(line, points, color) {
-  const geometry = new THREE.BufferGeometry().setFromPoints(
-    points.map(([x, y, z]) => new THREE.Vector3(x, z, -y)),
-  );
-  line.geometry.dispose();
-  line.geometry = geometry;
-  line.material.color.set(color);
-}
-
-function Scene3D({ state }) {
-  const host = useRef(null);
-  const sceneApi = useRef(null);
-
-  useEffect(() => {
-    const element = host.current;
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x071017);
-    scene.fog = new THREE.FogExp2(0x071017, 0.016);
-    const camera = new THREE.PerspectiveCamera(55, 1, 0.01, 500);
-    camera.position.set(7, 6, 8);
-    camera.lookAt(0, 0, 0);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    element.appendChild(renderer.domElement);
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-
-    scene.add(new THREE.GridHelper(30, 30, 0x24475b, 0x122631));
-    scene.add(new THREE.AxesHelper(1.2));
-    const estimated = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x31e6a1 }));
-    const truth = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xffb24a }));
-    const cloud = new THREE.Points(
-      new THREE.BufferGeometry(),
-      new THREE.PointsMaterial({ color: 0x5cb9ff, size: 0.025, sizeAttenuation: true }),
-    );
-    const body = new THREE.Group();
-    const cone = new THREE.Mesh(
-      new THREE.ConeGeometry(0.14, 0.38, 4),
-      new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true }),
-    );
-    cone.rotation.x = Math.PI / 2;
-    body.add(cone);
-    scene.add(estimated, truth, cloud, body);
-    sceneApi.current = { estimated, truth, cloud, body };
-
-    const resize = () => {
-      const clientWidth = Math.max(element.clientWidth, 1);
-      const clientHeight = Math.max(element.clientHeight, 1);
-      renderer.setSize(clientWidth, clientHeight, true);
-      camera.aspect = clientWidth / clientHeight;
-      camera.updateProjectionMatrix();
-    };
-    const observer = new ResizeObserver(resize);
-    observer.observe(element);
-    resize();
-    let frame;
-    const animate = () => {
-      controls.update();
-      renderer.render(scene, camera);
-      frame = requestAnimationFrame(animate);
-    };
-    animate();
-    return () => {
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-      renderer.dispose();
-      element.removeChild(renderer.domElement);
-    };
-  }, []);
-
-  useEffect(() => {
-    const api = sceneApi.current;
-    if (!api) return;
-    setLine(api.estimated, state.trajectory || [], 0x31e6a1);
-    setLine(api.truth, state.ground_truth || [], 0xffb24a);
-    const pointGeometry = new THREE.BufferGeometry().setFromPoints(
-      (state.map_points || []).map(([x, y, z]) => new THREE.Vector3(x, z, -y)),
-    );
-    api.cloud.geometry.dispose();
-    api.cloud.geometry = pointGeometry;
-    if (state.position) {
-      const [x, y, z] = state.position;
-      api.body.position.set(x, z, -y);
-    }
-  }, [state.trajectory, state.ground_truth, state.map_points, state.position]);
-
-  return <div className="scene" ref={host} />;
+  return { state, connected, connectionRevision, network };
 }
 
 const fmt = (value, unit = "") =>
@@ -227,7 +130,7 @@ function CameraCard({ side, label, endpoint, connectionRevision }) {
 
   return (
     <section className="camera-card panel">
-      <div className="panel-title"><span>{label}</span><small>WIFI MJPEG · 752×480 · 10 FPS</small></div>
+      <div className="panel-title"><span>{label}</span><small>WIFI MJPEG · LIVE</small></div>
       <div className="camera-frame">
         <img
           key={`${endpoint}-${side}-${attempt}`}
@@ -246,8 +149,8 @@ function CameraCard({ side, label, endpoint, connectionRevision }) {
 function App() {
   const [endpoint, setEndpoint] = useState(initialBackend);
   const [endpointDraft, setEndpointDraft] = useState(endpoint);
-  const { state, connected, connectionRevision, network, command } = useBackend(endpoint);
-  const progress = state.frame_count ? (100 * state.frame) / state.frame_count : 0;
+  const { state, connected, connectionRevision, network } = useBackend(endpoint);
+  const hasGroundTruth = (state.ground_truth?.length || 0) > 1;
   const trackingClass = state.tracking === "tracking" ? "good" : state.tracking === "lost" ? "bad" : "warn";
   const applyEndpoint = (value = endpointDraft) => {
     const normalized = normalizeBackend(value);
@@ -279,7 +182,7 @@ function App() {
             <CameraCard side="right" label="CAMERA 1 · RIGHT" endpoint={endpoint} connectionRevision={connectionRevision} />
           </div>
           <section className="panel viewport-panel">
-            <div className="panel-title"><span>WORLD VIEW</span><div className="legend"><b className="estimate" />Estimated <b className="truth" />Aligned ground truth <b className="points" />Map points</div></div>
+            <div className="panel-title"><span>WORLD VIEW</span><div className="legend"><b className="estimate" />Estimated {hasGroundTruth && <><b className="truth" />Aligned ground truth</>} <b className="points" />Map points</div></div>
             <Scene3D state={state} />
           </section>
         </div>
@@ -291,22 +194,14 @@ function App() {
             <div className="endpoint-presets"><button onClick={() => applyEndpoint(DEFAULT_BACKEND)}>192.168.1.105</button><button onClick={() => applyEndpoint(MDNS_BACKEND)}>mDNS</button></div>
           </section>
 
-          <section className="panel control-panel">
-            <div className="panel-title"><span>REPLAY CONTROL</span><small>{state.dataset || "EuRoC"}</small></div>
-            <div className="button-row"><button className="primary" onClick={() => command(state.playing ? "pause" : "play")}>{state.playing ? "PAUSE" : "PLAY"}</button><button onClick={() => command("reset")}>RESET</button></div>
-            <label className="speed">SPEED<select value={state.speed || 1} onChange={(e) => command("speed", Number(e.target.value))}>{[0.25, 0.5, 1, 2, 4].map((v) => <option key={v} value={v}>{v}×</option>)}</select></label>
-            <div className="progress"><i style={{ width: `${progress}%` }} /></div>
-            <div className="frame-count">FRAME {state.frame || 0} / {state.frame_count || 0}</div>
-          </section>
-
           <section className="panel telemetry-panel">
             <div className="panel-title"><span>SLAM TELEMETRY</span></div>
             <Metric label="ORB features" value={state.features ?? "—"} />
             <Metric label="Stereo depths" value={state.stereo_points ?? "—"} />
             <Metric label="PnP inliers" value={state.inliers ?? "—"} />
             <Metric label="Map points" value={state.map_points?.length ?? 0} />
-            <Metric label="Position error" value={fmt(state.position_error_m, " m")} />
-            <Metric label="ATE RMSE" value={fmt(state.ate_rmse_m, " m")} />
+            {hasGroundTruth && <Metric label="Position error" value={fmt(state.position_error_m, " m")} />}
+            {hasGroundTruth && <Metric label="ATE RMSE" value={fmt(state.ate_rmse_m, " m")} />}
             <div className="pose"><span>POSITION · METRES</span><code>{state.position ? state.position.map((v) => Number(v).toFixed(3)).join("   ") : "—   —   —"}</code></div>
           </section>
 
@@ -325,9 +220,9 @@ function App() {
           </section>
         </aside>
       </section>
-      <footer>LAPTOP UI · WIFI DATA PLANE · ORANGE PI ON-BOARD STEREO VO · EuRoC V1_01_easy</footer>
+      <footer>LAPTOP UI · WIFI DATA PLANE · ORANGE PI ON-BOARD STEREO VO · LIVE STEREO INPUT</footer>
     </main>
   );
 }
 
-createRoot(document.getElementById("root")).render(<App />);
+createRoot(document.getElementById("root")).render(new URLSearchParams(location.search).has("legacy") ? <App /> : <LiveDashboard Scene={Scene3D} Metric={Metric} />);

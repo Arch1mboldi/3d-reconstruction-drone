@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ServerScript = Join-Path $ProjectRoot "frontend\serve.mjs"
 $IndexFile = Join-Path $ProjectRoot "frontend\dist\index.html"
-$Backend = if ($args.Count -gt 0) { $args[0] } else { "http://192.168.1.105:8000" }
+$env:DRONE_FEED = if ($args.Count -gt 0) { $args[0] } elseif ($env:DRONE_FEED) { $env:DRONE_FEED } else { "http://192.168.1.105:8001" }
 $Port = if ($env:DASHBOARD_PORT) { [int]$env:DASHBOARD_PORT } else { 5173 }
 
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
@@ -11,6 +11,18 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
 }
 if (-not (Test-Path -LiteralPath $IndexFile)) {
     throw "frontend/dist is missing. Run: cd frontend; npm install; npm run build"
+}
+
+Push-Location $ProjectRoot
+try {
+    if (-not (Test-Path "frontend\node_modules\three\package.json")) {
+        npm.cmd ci --prefix frontend
+        if ($LASTEXITCODE -ne 0) { throw "Could not install dashboard dependencies" }
+    }
+    wsl.exe -e bash scripts/build_dashboard_vo.sh
+    if ($LASTEXITCODE -ne 0) { throw "WSL requires g++, pkg-config and libopencv-dev" }
+} finally {
+    Pop-Location
 }
 
 $Listener = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -29,8 +41,8 @@ if ($Listener) {
     }
 }
 
-$DashboardUrl = "http://127.0.0.1:$Port/?backend=$([uri]::EscapeDataString($Backend))"
-$Server = Start-Process -FilePath node -ArgumentList $ServerScript -WorkingDirectory $ProjectRoot -NoNewWindow -PassThru
+$DashboardUrl = "http://127.0.0.1:$Port/"
+$Server = Start-Process -FilePath node -ArgumentList ('"' + $ServerScript + '"') -WorkingDirectory $ProjectRoot -NoNewWindow -PassThru
 try {
     Start-Sleep -Milliseconds 700
     if ($Server.HasExited) {

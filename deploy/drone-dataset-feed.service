@@ -1,0 +1,15 @@
+[Unit]
+Description=Orange Pi EuRoC stereo image feed
+After=network.target
+
+[Service]
+User=orangepi
+WorkingDirectory=/home/orangepi/euroc-v1-feed
+ExecStart=/usr/bin/ruby -run -e httpd -- --bind-address=0.0.0.0 --port=8001 .
+StandardError=journal
+Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target

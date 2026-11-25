@@ -37,14 +37,14 @@ std::vector<Sample> read_camera_csv(const fs::path& mav0, const std::string& cam
 
 int main(int argc, char** argv) {
     if (argc < 3 || argc > 6) {
-        std::cerr << "Usage: drone_sender <EuRoC mav0 path|synthetic> <laptop IP> [port=5600] [fps=10] [max-pairs=0]\n";
+        std::cerr << "Usage: drone_sender <EuRoC mav0 path|synthetic> <laptop IP> [port=5600] [fps=20] [max-pairs=0]\n";
         return 2;
     }
     try {
         const fs::path mav0 = argv[1];
         const std::string host = argv[2];
         const int port = argc >= 4 ? std::stoi(argv[3]) : 5600;
-        const int fps = argc >= 5 ? std::stoi(argv[4]) : 10;
+        const int fps = argc >= 5 ? std::stoi(argv[4]) : 20;
         const int max_pairs = argc >= 6 ? std::stoi(argv[5]) : 0;
         if (port < 1 || port > 65535 || fps < 1 || fps > 30 || max_pairs < 0)
             throw std::runtime_error("Invalid port, fps or max-pairs");

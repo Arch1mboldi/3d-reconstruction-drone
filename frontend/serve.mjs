@@ -1,3 +1,4 @@
+import { startFeed, liveRoute } from "./live.mjs";
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
@@ -17,7 +18,9 @@ const mime = {
 
 createServer(async (request, response) => {
   try {
-    const pathname = decodeURIComponent(new URL(request.url, `http://${host}:${port}`).pathname);
+    const url = new URL(request.url, `http://${host}:${port}`);
+    if (liveRoute(url, request, response)) return;
+    const pathname = decodeURIComponent(url.pathname);
     let target = path.resolve(root, `.${pathname}`);
     if (target !== root && !target.startsWith(`${root}${path.sep}`)) {
       response.writeHead(403).end("Forbidden");
@@ -39,6 +42,6 @@ createServer(async (request, response) => {
   }
 }).listen(port, host, () => {
   console.log(`Laptop dashboard: http://${host}:${port}`);
-  console.log("Orange Pi backend: configured in the dashboard endpoint panel");
+  void startFeed();
   console.log("Press Ctrl+C to stop the laptop frontend.");
 });
